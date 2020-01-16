@@ -1,9 +1,12 @@
 import React from 'react';
 import 'rbx/index.css';
-import { Button, Container, Title } from 'rbx';
+import { Button, Container, Title, Message } from 'rbx';
 import {useState} from 'react';
 import firebase from 'firebase/app';
 import 'firebase/database';
+import 'firebase/auth';
+import StyledFirebaseAuth from 'react-firebaseui/StyledFirebaseAuth';
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyD0YBsd0Hf6MHTN_38_9o-ze2a7KfRJF44",
@@ -16,35 +19,18 @@ const firebaseConfig = {
 
 };
 
+const uiConfig = {
+  signInFlow: 'popup',
+  signInOptions: [
+    firebase.auth.GoogleAuthProvider.PROVIDER_ID
+  ],
+  callbacks: {
+    signInSuccessWithAuthResult: () => false
+  }
+};
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database().ref();
-
-
-// const schedule = {
-//   "title": "CS Courses for 2018-2019",
-//   "courses": [
-//     {
-//       "id": "F101",
-//       "title": "Computer Science: Concepts, Philosophy, and Connections",
-//       "meets": "MWF 11:00-11:50"
-//     },
-//     {
-//       "id": "F110",
-//       "title": "Intro Programming for non-majors",
-//       "meets": "MWF 10:00-10:50"
-//     },
-//     {
-//       "id": "F111",
-//       "title": "Fundamentals of Computer Programming I",
-//       "meets": "MWF 13:00-13:50"
-//     },
-//     {
-//       "id": "F211",
-//       "title": "Fundamentals of Computer Programming II",
-//       "meets": "TuTh 12:30-13:50"
-//     }
-//   ]
-// };
 
 const meetsPat = /^ *((?:M|Tu|W|Th|F)+) +(\d\d?):(\d\d) *[ -] *(\d\d?):(\d\d) *$/;
 const days = ['M', 'Tu', 'W', 'Th', 'F'];
@@ -72,8 +58,29 @@ const hasConflict = (course, selected) => (
   selected.some(selection => courseConflict (course, selection))
 );
 
-const Banner = ({ title }) => (
-  <Title>{ title }</Title>
+const Welcome = ({ user }) => (
+  <Message color="info">
+    <Message.Header>
+      Welcome, {user.displayName}
+      <Button primary onClick={() => firebase.auth().signOut()}>
+        Log out
+      </Button>
+    </Message.Header>
+  </Message>
+);
+
+const SignIn = () => (
+  <StyledFirebaseAuth
+    uiConfig={uiConfig}
+    firebaseAuth={firebase.auth()}
+  />
+);
+
+const Banner = ({ user, title }) => (
+  <React.Fragment>
+    { user ? <Welcome user={ user } /> : <SignIn /> }
+    <Title>{ title || '[loading...]' }</Title>
+  </React.Fragment>
 );
 
 const moveCourse = course => {
@@ -117,10 +124,10 @@ const TermSelector = ({state}) => (
 );
   
 const Course = ({ course, state }) => (
-  <Button color = { buttonColor (state.selected.includes(course)) }
+  <Button color={ buttonColor(state.selected.includes(course)) }
     onClick={ () => state.toggle(course) }
     onDoubleClick={ () => moveCourse(course) }
-    disabled = { hasConflict (course, state.selected) }
+    disabled={ hasConflict(course, state.selected) }
     >
     { getCourseTerm(course) } CS { getCourseNumber(course) }: { course.title }
   </Button>
@@ -143,7 +150,10 @@ const CourseList = ({ courses }) => {
     <React.Fragment>
       <TermSelector state = {{term,setTerm}}/>
       <Button.Group>
-        { termCourses.map(course => <Course key={ course.id } course={ course } state = {{selected, toggle}}/>) }
+      { termCourses.map(course =>
+           <Course key={ course.id } course={ course }
+             state={ { selected, toggle } }
+           />) }
       </Button.Group>
     </React.Fragment>
   );
@@ -171,20 +181,25 @@ const addScheduleTimes = schedule => ({
 });
 
 const App = () =>  {
-  const [schedule, setSchedule] = useState({title:'',courses:[]});
+  const [schedule, setSchedule] = useState({ title: '', courses: [] });
+  const [user, setUser] = useState(null);
 
   React.useEffect(() => {
     const handleData = snap => {
       if (snap.val()) setSchedule(addScheduleTimes(snap.val()));
-    }
+    };
     db.on('value', handleData, error => alert(error));
     return () => { db.off('value', handleData); };
   }, []);
 
+  React.useEffect(() => {
+    firebase.auth().onAuthStateChanged(setUser);
+  }, []);
+
   return (
     <Container>
-      <Banner title={ schedule.title } />
-      <CourseList courses={ schedule.courses } />
+      <Banner title={ schedule.title } user={ user } />
+      <CourseList courses={ schedule.courses } user={ user } />
     </Container>
   );
 };
